@@ -27,6 +27,7 @@ def help():
     form = (
         'data:text/html,<form action="{0}" method="POST" accept-charset="UTF-8">'
         '<textarea name="{1}" cols="80" rows="24"></textarea>'
+        '<br><input type="radio" name="burn" value="true">Delete paste after one view?'
         '<br><button type="submit">{1}</button></form>'.format(URL, POST)
     )
     return """
@@ -43,6 +44,7 @@ SYNOPSIS
 DESCRIPTION
     add <a href='{3}'>?&lt;lang&gt;</a> to resulting url for line numbers and syntax highlighting
     use <a href='{2}'>this form</a> to paste from a browser
+    add "burn=true" to your request to cause the paste to be deleted after one view
 
 EXAMPLES
     ~$ cat bin/ching | curl -F '{0}=&lt;-' {1}
@@ -68,6 +70,7 @@ class Sprunge(db.Model):
     content = db.TextProperty()
     date = db.DateTimeProperty(auto_now_add=True)
     blob = db.StringProperty()
+    burn = db.BooleanProperty()
 
 class MainHandler(webapp2.RequestHandler):
 
@@ -88,6 +91,7 @@ class MainHandler(webapp2.RequestHandler):
         s.name = nid
         key = make_blob(nid, self.request.get(POST))
         s.blob = key
+        s.burn = (self.request.get('burn') == 'true')
         try:
             s.put()
         except Exception as ex:
@@ -128,7 +132,9 @@ class ServeHandler(blobstore_handlers.BlobstoreDownloadHandler):
                     c.put()
                 except Exception as ex:
                     logging.error(ex)
-
+        if c.burn:
+            blobstore.delete(c.blob)
+            c.delete()
         syntax = self.request.query_string
         if not syntax:
             self.response.headers['Content-Type'] = 'text/plain; charset=UTF-8'
